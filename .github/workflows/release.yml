@@ -1,9 +1,14 @@
 name: Release
 
-# Push a tag like v0.1.0 (or v0.1.0-beta1 for a test build) to publish a release.
+# Three ways to publish a release:
+#  - push a tag like v0.1.0 (a tag with a dash, e.g. v0.1.0-beta1, is marked pre-release)
+#  - push to the `release` branch: publishes a test build v<versionName>-beta.<run number>
+#  - Actions tab -> Release -> Run workflow (same as the branch)
 on:
   push:
     tags: ["v*"]
+    branches: [release]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,6 +26,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Pick the release tag
+        id: tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            version=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+            tag="v${version}-beta.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Unit tests
         run: ./gradlew --no-daemon testReleaseUnitTest
 
@@ -30,12 +46,13 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk "Troubadour-${TAG}.apk"
           flags=""
           case "$TAG" in *-*) flags="--prerelease" ;; esac
           gh release create "$TAG" "Troubadour-${TAG}.apk" \
+            --target "$GITHUB_SHA" \
             --title "Troubadour ${TAG}" \
             --notes-file .github/release-notes.md \
             $flags
