@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pandora still serves many song streams and album art over plain http. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">pandora.com</domain>
+        <domain includeSubdomains="true">p-cdn.com</domain>
+        <domain includeSubdomains="true">p-cdn.us</domain>
+        <domain includeSubdomains="true">pandora.net</domain>
+    </domain-config>
+</network-security-config>

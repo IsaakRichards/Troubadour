@@ -114,16 +114,52 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            // Usually an expired stream URL (Pandora's links time out). Move along.
-            Log.w(TAG, "Playback error, skipping track", error)
+            Log.w(TAG, "Playback error (${error.errorCodeName})", error)
+            if (tryNextStreamUrl()) return
             consecutiveErrors++
+            if (consecutiveErrors == 1) {
+                // Say what went wrong, so problems can be diagnosed from the screen.
+                report("Couldn't play that song (${describePlaybackError(error)}). Skipping.")
+            }
             if (consecutiveErrors > MAX_CONSECUTIVE_ERRORS) {
-                report("Several songs failed to play. Press play to try again.")
+                report("Several songs failed to play: ${describePlaybackError(error)}. Press play to try again.")
                 consecutiveErrors = 0
                 return
             }
             skipToNext()
         }
+    }
+
+    /** Retries the current song with its next audio format. Returns false when none are left. */
+    private fun tryNextStreamUrl(): Boolean {
+        val item = player.currentMediaItem ?: return false
+        val extras = item.mediaMetadata.extras ?: return false
+        val urls = extras.getStringArrayList(EXTRA_URLS) ?: return false
+        val next = extras.getInt(EXTRA_URL_INDEX, 0) + 1
+        if (next >= urls.size) return false
+        val newExtras = Bundle(extras).apply { putInt(EXTRA_URL_INDEX, next) }
+        val retry = item.buildUpon()
+            .setUri(urls[next])
+            .setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(newExtras).build())
+            .build()
+        player.replaceMediaItem(player.currentMediaItemIndex, retry)
+        player.prepare()
+        player.play()
+        return true
+    }
+
+    private fun describePlaybackError(error: PlaybackException): String {
+        var cause: Throwable? = error.cause
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                return "server said HTTP ${cause.responseCode}"
+            }
+            if (cause.message?.contains("Cleartext", ignoreCase = true) == true) {
+                return "insecure link blocked"
+            }
+            cause = cause.cause
+        }
+        return error.errorCodeName
     }
 
     private fun skipToNext() {
@@ -377,6 +413,8 @@ class PlaybackService : MediaLibraryService() {
 
         const val EXTRA_STATION_TOKEN = "stationToken"
         const val EXTRA_TRACK_TOKEN = "trackToken"
+        const val EXTRA_URLS = "urls"
+        const val EXTRA_URL_INDEX = "urlIndex"
         const val EXTRA_ERROR = "error"
         const val EXTRA_ERROR_ID = "errorId"
 
@@ -398,10 +436,11 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         fun Track.toMediaItem(quality: AudioQuality): MediaItem? {
-            val url = audioUrl(quality) ?: return null
+            val urls = audioUrls(quality)
+            if (urls.isEmpty()) return null
             return MediaItem.Builder()
                 .setMediaId(TRACK_PREFIX + trackToken)
-                .setUri(url)
+                .setUri(urls.first())
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(title)
@@ -416,6 +455,8 @@ class PlaybackService : MediaLibraryService() {
                             bundleOf(
                                 EXTRA_STATION_TOKEN to stationToken,
                                 EXTRA_TRACK_TOKEN to trackToken,
+                                EXTRA_URLS to ArrayList(urls),
+                                EXTRA_URL_INDEX to 0,
                             ),
                         )
                         .build(),

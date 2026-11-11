@@ -52,14 +52,17 @@ data class Track(
     val urlMp3: String?,
 ) {
     /** Preferred URL for the requested quality, falling back to whatever exists. */
-    fun audioUrl(quality: AudioQuality): String? {
+    fun audioUrl(quality: AudioQuality): String? = audioUrls(quality).firstOrNull()
+
+    /** Every distinct stream URL, best match for [quality] first; later ones are fallbacks. */
+    fun audioUrls(quality: AudioQuality): List<String> {
         val order = when (quality) {
             AudioQuality.HIGH -> listOf(urlHigh, urlMp3, urlMedium, urlLow)
             AudioQuality.MP3 -> listOf(urlMp3, urlHigh, urlMedium, urlLow)
             AudioQuality.MEDIUM -> listOf(urlMedium, urlHigh, urlMp3, urlLow)
             AudioQuality.LOW -> listOf(urlLow, urlMedium, urlHigh, urlMp3)
         }
-        return order.firstOrNull { !it.isNullOrBlank() }
+        return order.filterNot { it.isNullOrBlank() }.map { it!! }.distinct()
     }
 }
 

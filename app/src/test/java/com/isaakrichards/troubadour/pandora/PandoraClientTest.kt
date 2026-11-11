@@ -120,6 +120,7 @@ class PandoraClientTest {
         assertEquals("https://a/high", t.audioUrl(AudioQuality.HIGH))
         assertEquals("https://a/mp3", t.audioUrl(AudioQuality.MP3))
         assertEquals("https://a/high", t.audioUrl(AudioQuality.LOW)) // falls back
+        assertEquals(listOf("https://a/mp3", "https://a/high"), t.audioUrls(AudioQuality.MP3))
     }
 
     @Test
